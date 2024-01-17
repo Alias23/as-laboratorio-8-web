@@ -1,0 +1,65 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose the action to execute'
+        required: true
+        default: 'deploy'  # Opción predeterminada, puedes cambiarla
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Repository
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.NOMBRE_DE_USUARIO_DE_DOCKERHUB }}
+          password: ${{ secrets.TOKEN_DE_DOCKERHUB }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          push: true
+          tags: alias26/as-laboratorio-8-web:latest
+
+      - name: Login to Google Cloud Compute
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.JSON }}
+          project_id: ${{ secrets.NOMBRE_DEL_PROYECTO_GC }}
+
+      - name: Autenticate to Kubernetes Engine
+        uses: simenandre/setup-gke-gcloud-auth-plugin@v1
+
+      - name: Configure kubectl
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: as-lab-8
+          location: us-central1
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/web-deployment.yaml
+          kubectl apply -f k8s/db-deployment.yaml
+          kubectl apply -f k8s/db-clusterip-service.yaml
+          kubectl apply -f k8s/web-loadbalancer-service.yaml
+
+  select-action:
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - name: Select Action
+        id: select
+        run: |
+          echo "Selected action: ${{ github.event.inputs.action }}"
+        env:
+          SELECTED_ACTION: ${{ github.event.inputs.action }}
